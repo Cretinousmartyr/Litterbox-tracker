@@ -12,17 +12,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Render the dashboard with all litter boxes
   renderDashboard();
 
-  // --- NFC Deep-Link Simulation ---
-  // Check URL parameters (e.g., ?box=3&activity=scooped)
-  const params = new URLSearchParams(window.location.search);
-  const boxParam = params.get("box");
-  const activityParam = params.get("activity");
-  if (boxParam && activityParam) {
-    logEvent(parseInt(boxParam, 10), activityParam);
-    // Clean the URL so the event isn’t re‑triggered on refresh
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-
   // --- Push Notification Demo ---
   if ("Notification" in window) {
     Notification.requestPermission().then(permission => {
@@ -75,7 +64,7 @@ function renderDashboard() {
       input.addEventListener("blur", () => {
         const newName = input.value.trim() || box.defaultName;
         localStorage.setItem("box-name-" + box.id, newName);
-        renderDashboard(); // Re‑render to update the name
+        renderDashboard(); // Re-render to update the name
       });
       boxDiv.replaceChild(input, title);
       input.focus();
@@ -93,7 +82,9 @@ function renderDashboard() {
     const cleanBtn = document.createElement("button");
     cleanBtn.textContent = "Cleaned";
     cleanBtn.addEventListener("click", () => {
+      // When "cleaned" is clicked, log both a "cleaned" and a "scooped" event
       logEvent(box.id, "cleaned");
+      logEvent(box.id, "scooped");
     });
     boxDiv.appendChild(cleanBtn);
 
@@ -123,22 +114,10 @@ function logEvent(boxId, activity) {
     timestamp: now.toISOString()
   };
 
-  // If the event is "cleaned", also create two auto "scooped" events for the next 48 hours
-  let eventsToLog = [eventObj];
-  if (activity === "cleaned") {
-    for (let i = 1; i <= 2; i++) {
-      const autoDate = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
-      eventsToLog.push({
-        activity: "scooped (auto)",
-        timestamp: autoDate.toISOString()
-      });
-    }
-  }
-
   // Retrieve existing events from localStorage
   let stored = localStorage.getItem("box-events-" + boxId);
   let events = stored ? JSON.parse(stored) : [];
-  events = events.concat(eventsToLog);
+  events.push(eventObj);
   localStorage.setItem("box-events-" + boxId, JSON.stringify(events));
 
   updateBox(boxId);
@@ -169,7 +148,7 @@ function updateBox(boxId) {
 }
 
 // Compute the next notification time for a given box and type
-// "scooped": 48 hours after the last manual "scooped" event
+// "scooped": 48 hours after the last "scooped" event
 // "cleaned": 21 days after the last "cleaned" event
 function getNextNotificationTime(boxId, type) {
   let stored = localStorage.getItem("box-events-" + boxId);
