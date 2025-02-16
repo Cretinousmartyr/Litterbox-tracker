@@ -1,178 +1,263 @@
-// Define six default boxes with pre‑names
-const defaultBoxes = [
-  { id: 1, defaultName: "My Bedroom Litter Box" },
-  { id: 2, defaultName: "Living Room Litter Box" },
-  { id: 3, defaultName: "Under Garbage Can Litter Box" },
-  { id: 4, defaultName: "Undertable Litter Box" },
-  { id: 5, defaultName: "Laundry Room Litter Box" },
-  { id: 6, defaultName: "Parents' Bedroom Litter Box" }
-];
+// Global array for our litter boxes.
+window.boxes = [];
 
+// When the DOM is loaded, initialize the boxes and render them.
 document.addEventListener("DOMContentLoaded", () => {
-  // Render the dashboard with all litter boxes
-  renderDashboard();
-
-  // --- Push Notification Demo ---
-  if ("Notification" in window) {
-    Notification.requestPermission().then(permission => {
-      if (permission === "granted") {
-        // For demonstration: show a notification after 5 seconds
-        setTimeout(() => {
-          new Notification("Reminder: Check your litter boxes!");
-        }, 5000);
-      }
-    });
-  }
-
-  // --- Register Service Worker for Offline Support ---
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker
-      .register("service-worker.js")
-      .then(reg => {
-        console.log("Service Worker Registered", reg);
-      })
-      .catch(error => {
-        console.error("Service Worker registration failed:", error);
-      });
-  }
+  window.boxes = loadBoxes();
+  renderBoxes(window.boxes);
 });
 
-// Renders the dashboard with each litter box
-function renderDashboard() {
-  const dashboard = document.getElementById("dashboard");
-  dashboard.innerHTML = ""; // Clear previous content
+// Load boxes from localStorage or create default boxes if none exist.
+function loadBoxes() {
+  const data = localStorage.getItem("litterBoxes");
+  if (data) {
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      console.error("Error parsing stored data:", e);
+    }
+  }
+  // Default box names.
+  const defaultNames = [
+    "My Bedroom Litter Box",
+    "Living Room Litter Box",
+    "Under Garbage Can Litter Box",
+    "Undertable Litter Box",
+    "Laundry Room Litter Box",
+    "Parents' Bedroom Litter Box",
+  ];
+  const boxes = defaultNames.map((name, index) => ({
+    id: index,
+    name: name,
+    events: []
+  }));
+  localStorage.setItem("litterBoxes", JSON.stringify(boxes));
+  return boxes;
+}
 
-  defaultBoxes.forEach(box => {
-    // Use a stored name if available; otherwise, the default name
-    const storedName = localStorage.getItem("box-name-" + box.id);
-    const boxName = storedName ? storedName : box.defaultName;
+// Save the entire boxes array to localStorage.
+function saveBoxes(boxes) {
+  localStorage.setItem("litterBoxes", JSON.stringify(boxes));
+}
 
-    // Create container for the box
-    const boxDiv = document.createElement("div");
-    boxDiv.className = "litter-box";
-    boxDiv.setAttribute("data-box-id", box.id);
-
-    // Create the title element (click to rename)
-    const title = document.createElement("h2");
-    title.textContent = boxName;
-    title.title = "Click to rename";
-    title.addEventListener("click", () => {
-      // Replace title with an input field for renaming
-      const input = document.createElement("input");
-      input.type = "text";
-      input.value = boxName;
-      input.addEventListener("blur", () => {
-        const newName = input.value.trim() || box.defaultName;
-        localStorage.setItem("box-name-" + box.id, newName);
-        renderDashboard(); // Re-render to update the name
-      });
-      boxDiv.replaceChild(input, title);
-      input.focus();
-    });
-    boxDiv.appendChild(title);
-
-    // Create buttons to log "scooped" and "cleaned" events
-    const scoopBtn = document.createElement("button");
-    scoopBtn.textContent = "Scooped";
-    scoopBtn.addEventListener("click", () => {
-      logEvent(box.id, "scooped");
-    });
-    boxDiv.appendChild(scoopBtn);
-
-    const cleanBtn = document.createElement("button");
-    cleanBtn.textContent = "Cleaned";
-    cleanBtn.addEventListener("click", () => {
-      // When "cleaned" is clicked, log both a "cleaned" and a "scooped" event
-      logEvent(box.id, "cleaned");
-      logEvent(box.id, "scooped");
-    });
-    boxDiv.appendChild(cleanBtn);
-
-    // Container to display logged events
-    const eventsDiv = document.createElement("div");
-    eventsDiv.className = "events";
-    eventsDiv.id = "events-" + box.id;
-    boxDiv.appendChild(eventsDiv);
-
-    // Container to display next notification times
-    const notifDiv = document.createElement("div");
-    notifDiv.className = "notification-info";
-    notifDiv.id = "notification-" + box.id;
-    boxDiv.appendChild(notifDiv);
-
-    dashboard.appendChild(boxDiv);
-    // Update display for this box
-    updateBox(box.id);
+// Render all boxes into the #boxes-container element.
+function renderBoxes(boxes) {
+  const container = document.getElementById("boxes-container");
+  container.innerHTML = "";
+  boxes.forEach((box) => {
+    container.appendChild(createBoxElement(box));
   });
 }
 
-// Log an event for a specific box
-function logEvent(boxId, activity) {
-  const now = new Date();
-  const eventObj = {
-    activity: activity,
-    timestamp: now.toISOString()
-  };
+// Create a DOM element for a single box.
+function createBoxElement(box) {
+  const boxDiv = document.createElement("div");
+  boxDiv.className = "box";
+  boxDiv.dataset.boxId = box.id;
 
-  // Retrieve existing events from localStorage
-  let stored = localStorage.getItem("box-events-" + boxId);
-  let events = stored ? JSON.parse(stored) : [];
-  events.push(eventObj);
-  localStorage.setItem("box-events-" + boxId, JSON.stringify(events));
+  // Header with editable title.
+  const header = document.createElement("div");
+  header.className = "box-header";
+  const title = createTitleElement(box);
+  header.appendChild(title);
+  boxDiv.appendChild(header);
 
-  updateBox(boxId);
+  // Summary of recent events and full log toggle.
+  const summaryDiv = document.createElement("div");
+  summaryDiv.className = "box-summary";
+  
+  // Recent events summary.
+  const lastEvents = document.createElement("div");
+  lastEvents.className = "last-events";
+  updateEventSummary(box, lastEvents);
+  summaryDiv.appendChild(lastEvents);
+  
+  // Toggle full log link.
+  const toggleLink = document.createElement("button");
+  toggleLink.className = "toggle-log";
+  toggleLink.textContent = "Show Full Log";
+  summaryDiv.appendChild(toggleLink);
+  
+  // Full log container (initially hidden).
+  const fullLogDiv = document.createElement("div");
+  fullLogDiv.className = "full-log hidden";
+  updateFullLog(box, fullLogDiv);
+  summaryDiv.appendChild(fullLogDiv);
+  
+  // Toggle functionality.
+  toggleLink.addEventListener("click", () => {
+    if (fullLogDiv.classList.contains("hidden")) {
+      fullLogDiv.classList.remove("hidden");
+      toggleLink.textContent = "Hide Full Log";
+    } else {
+      fullLogDiv.classList.add("hidden");
+      toggleLink.textContent = "Show Full Log";
+    }
+  });
+  
+  boxDiv.appendChild(summaryDiv);
+
+  // Controls for logging events.
+  const controlsDiv = document.createElement("div");
+  controlsDiv.className = "box-controls";
+  
+  const scoopedBtn = document.createElement("button");
+  scoopedBtn.className = "btn scooped";
+  scoopedBtn.textContent = "Scooped";
+  scoopedBtn.addEventListener("click", () => {
+    addEventToBox(box, "Scooped");
+  });
+  controlsDiv.appendChild(scoopedBtn);
+
+  const cleanedBtn = document.createElement("button");
+  cleanedBtn.className = "btn cleaned";
+  cleanedBtn.textContent = "Cleaned";
+  cleanedBtn.addEventListener("click", () => {
+    // Clicking Cleaned logs both a cleaned event and a scooped event (same timestamp).
+    addEventToBox(box, "Cleaned", true);
+  });
+  controlsDiv.appendChild(cleanedBtn);
+
+  boxDiv.appendChild(controlsDiv);
+
+  // Notification schedule display.
+  const notificationsDiv = document.createElement("div");
+  notificationsDiv.className = "notifications";
+  updateNotificationsDiv(box, notificationsDiv);
+  boxDiv.appendChild(notificationsDiv);
+
+  return boxDiv;
 }
 
-// Update the event list and notification info for a given box
-function updateBox(boxId) {
-  // Update events display
-  const eventsDiv = document.getElementById("events-" + boxId);
-  let stored = localStorage.getItem("box-events-" + boxId);
-  let events = stored ? JSON.parse(stored) : [];
-  events.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  let html = "<ul>";
-  events.forEach(ev => {
-    html += `<li>${ev.activity} - ${new Date(ev.timestamp).toLocaleString()}</li>`;
+// Create the title element that is editable on click.
+function createTitleElement(box) {
+  const title = document.createElement("h2");
+  title.className = "box-title";
+  title.textContent = box.name;
+  title.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = box.name;
+    input.addEventListener("blur", () => {
+      box.name = input.value || box.name;
+      saveAndUpdateBox(box);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        input.blur();
+      }
+    });
+    title.replaceWith(input);
+    input.focus();
   });
-  html += "</ul>";
-  eventsDiv.innerHTML = html;
+  return title;
+}
 
-  // Update notification info
-  const notifDiv = document.getElementById("notification-" + boxId);
-  const nextScooped = getNextNotificationTime(boxId, "scooped");
-  const nextCleaned = getNextNotificationTime(boxId, "cleaned");
-  notifDiv.innerHTML = `
-    <p>Next scoop notification: ${nextScooped ? nextScooped.toLocaleString() : "Not scheduled"}</p>
-    <p>Next cleaned notification: ${nextCleaned ? nextCleaned.toLocaleString() : "Not scheduled"}</p>
+// Save changes (such as renaming) and update the title element.
+function saveAndUpdateBox(box) {
+  const boxDiv = document.querySelector(`.box[data-box-id="${box.id}"]`);
+  if (!boxDiv) return;
+  const existingInput = boxDiv.querySelector("input");
+  if (existingInput) {
+    const newTitle = createTitleElement(box);
+    boxDiv.querySelector(".box-header").replaceChild(newTitle, existingInput);
+  }
+  updateLocalStorageForBox(box);
+}
+
+// Add an event to a box. If "Cleaned" is clicked with addExtraScooped=true,
+// then log both a "Cleaned" event and a "Scooped" event (with the same timestamp).
+function addEventToBox(box, eventType, addExtraScooped = false) {
+  const timestamp = new Date().toISOString();
+  if (eventType === "Cleaned" && addExtraScooped) {
+    box.events.push({ type: "Cleaned", timestamp });
+    box.events.push({ type: "Scooped", timestamp });
+  } else {
+    box.events.push({ type: eventType, timestamp });
+  }
+  updateBoxUI(box);
+  updateLocalStorageForBox(box);
+}
+
+// Update the events and notifications parts of a box’s UI.
+function updateBoxUI(box) {
+  const boxDiv = document.querySelector(`.box[data-box-id="${box.id}"]`);
+  if (!boxDiv) return;
+  
+  // Update event summary and full log.
+  const lastEvents = boxDiv.querySelector(".last-events");
+  updateEventSummary(box, lastEvents);
+  const fullLogDiv = boxDiv.querySelector(".full-log");
+  updateFullLog(box, fullLogDiv);
+  
+  // Update notifications.
+  const notificationsDiv = boxDiv.querySelector(".notifications");
+  updateNotificationsDiv(box, notificationsDiv);
+}
+
+// Update the summary area to show the last scooped and cleaned events.
+function updateEventSummary(box, summaryDiv) {
+  // Find the most recent scooped and cleaned events.
+  const scoopedEvents = box.events.filter(e => e.type === "Scooped");
+  const cleanedEvents = box.events.filter(e => e.type === "Cleaned");
+
+  const lastScooped = scoopedEvents.length > 0 ? 
+    new Date(scoopedEvents[scoopedEvents.length - 1].timestamp).toLocaleString() : "N/A";
+  const lastCleaned = cleanedEvents.length > 0 ? 
+    new Date(cleanedEvents[cleanedEvents.length - 1].timestamp).toLocaleString() : "N/A";
+  
+  summaryDiv.innerHTML = `
+    <div><strong>Last Scooped:</strong> ${lastScooped}</div>
+    <div><strong>Last Cleaned:</strong> ${lastCleaned}</div>
   `;
 }
 
-// Compute the next notification time for a given box and type
-// "scooped": 48 hours after the last "scooped" event
-// "cleaned": 21 days after the last "cleaned" event
-function getNextNotificationTime(boxId, type) {
-  let stored = localStorage.getItem("box-events-" + boxId);
-  let events = stored ? JSON.parse(stored) : [];
-  let lastEvent = null;
-
-  if (type === "scooped") {
-    events.filter(ev => ev.activity === "scooped").forEach(ev => {
-      if (!lastEvent || new Date(ev.timestamp) > new Date(lastEvent.timestamp)) {
-        lastEvent = ev;
-      }
-    });
-    if (lastEvent) {
-      return new Date(new Date(lastEvent.timestamp).getTime() + 48 * 60 * 60 * 1000);
-    }
-  } else if (type === "cleaned") {
-    events.filter(ev => ev.activity === "cleaned").forEach(ev => {
-      if (!lastEvent || new Date(ev.timestamp) > new Date(lastEvent.timestamp)) {
-        lastEvent = ev;
-      }
-    });
-    if (lastEvent) {
-      return new Date(new Date(lastEvent.timestamp).getTime() + 21 * 24 * 60 * 60 * 1000);
-    }
+// Update the full event log display (all events in reverse chronological order).
+function updateFullLog(box, fullLogDiv) {
+  fullLogDiv.innerHTML = "";
+  if (box.events.length === 0) {
+    fullLogDiv.textContent = "No events logged yet.";
+    return;
   }
-  return null;
+  // Create a list of events (most recent first).
+  box.events.slice().reverse().forEach(event => {
+    const eventDiv = document.createElement("div");
+    eventDiv.textContent = `${event.type} at ${new Date(event.timestamp).toLocaleString()}`;
+    fullLogDiv.appendChild(eventDiv);
+  });
+}
+
+// Update the notification schedule display for a given box.
+function updateNotificationsDiv(box, notificationsDiv) {
+  // Determine the last scooped and cleaned events (if any).
+  const scoopEvents = box.events.filter(e => e.type === "Scooped");
+  const cleanedEvents = box.events.filter(e => e.type === "Cleaned");
+
+  let nextScoopedTime = "N/A";
+  let nextCleanedTime = "N/A";
+
+  if (scoopEvents.length > 0) {
+    const lastScooped = new Date(scoopEvents[scoopEvents.length - 1].timestamp);
+    const nextScooped = new Date(lastScooped.getTime() + 48 * 60 * 60 * 1000);
+    nextScoopedTime = nextScooped.toLocaleString();
+  }
+  if (cleanedEvents.length > 0) {
+    const lastCleaned = new Date(cleanedEvents[cleanedEvents.length - 1].timestamp);
+    const nextCleaned = new Date(lastCleaned.getTime() + 21 * 24 * 60 * 60 * 1000);
+    nextCleanedTime = nextCleaned.toLocaleString();
+  }
+
+  notificationsDiv.innerHTML = `
+    <div><strong>Next scoop notification:</strong> ${nextScoopedTime}</div>
+    <div><strong>Next cleaned notification:</strong> ${nextCleanedTime}</div>
+  `;
+}
+
+// Update localStorage for the modified box by saving the entire boxes array.
+function updateLocalStorageForBox(box) {
+  const index = window.boxes.findIndex(b => b.id === box.id);
+  if (index !== -1) {
+    window.boxes[index] = box;
+    saveBoxes(window.boxes);
+  }
 }
