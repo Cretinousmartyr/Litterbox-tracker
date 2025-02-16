@@ -6,14 +6,26 @@ body {
 .litter-box {
   border: 1px solid #ccc;
   padding: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.litter-box h2 {
+  margin: 0;
+  cursor: pointer;
+}
+
+.litter-box input[type="text"] {
+  font-size: 1.2em;
+  margin-bottom: 5px;
 }
 
 button {
   margin-right: 5px;
+  margin-top: 5px;
 }
 
-.events {
+.events,
+.notification-info {
   margin-top: 10px;
   font-size: 0.9em;
 }
